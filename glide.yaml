@@ -1,0 +1,8 @@
+package: github.com/cirocosta/sdns
+import:
+- package: github.com/miekg/dns
+- package: github.com/alexflint/go-arg
+- package: github.com/rs/zerolog
+  version: v1.2.2
+- package: github.com/rs/xid
+  version: v1.1
