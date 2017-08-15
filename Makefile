@@ -3,5 +3,9 @@ install:
 
 fmt:
 	go fmt
+	cd ./lib && go fmt
 
-.PHONY: fmt
+test:
+	cd ./lib && go test -v
+
+.PHONY: fmt install fmt

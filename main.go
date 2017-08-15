@@ -7,27 +7,13 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/miekg/dns"
-)
 
-type SdnsConfig struct {
-	Port      int      `arg:"-p,env,help:port to listen to"`
-	Address   string   `arg:"-a,env,help:address to bind to"`
-	Debug     bool     `arg:"-d,env,help:turn debug mode on"`
-	Recursors []string `arg:"-r,--recursor,help:list of recursors to honor"`
-	Rules     []string `arg:"positional"`
-}
+	. "github.com/cirocosta/sdns/lib"
+)
 
 var (
 	args = &SdnsConfig{Port: 53}
 )
-
-type Sdns struct {
-	rules map[string]string
-}
-
-func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
-	return
-}
 
 var records = map[string]string{
 	"test.service.": "192.168.0.2",
