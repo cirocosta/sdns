@@ -15,8 +15,8 @@
 sudo sdns \
         --port 53 \
         --addr 127.0.0.11 \
-        'test.cirocosta.io=192.168.0.103' \
-        '*.cirocosta.io=127.0.0.1'
+        'domain=test.cirocosta.io,ip=192.168.0.103,ns=mynameserver.com' \
+        'domain=*.cirocosta.io,ip=127.0.0.1,ip=10.0.0.10'
 ```
 
 
@@ -27,5 +27,5 @@ sudo sdns \
         --debug \               # logs the requests to 'stderr'
         --port 53 \             
         --addr 127.0.0.11 \
-        --recursor
+        --recursor 8.8.8.8
 ```

@@ -35,7 +35,7 @@ func TestDomainMatches(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.matches, DomainMatches(tc.d1,tc.d2))
+			assert.Equal(t, tc.matches, DomainMatches(tc.d1, tc.d2))
 		})
 	}
 }

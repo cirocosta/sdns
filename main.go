@@ -2,65 +2,58 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
 	"strconv"
 
 	"github.com/alexflint/go-arg"
-	"github.com/miekg/dns"
+	"github.com/pkg/errors"
 
 	. "github.com/cirocosta/sdns/lib"
 )
 
+type config struct {
+	Port      int      `arg:"-p,env,help:port to listen to"`
+	Address   string   `arg:"-a,env,help:address to bind to"`
+	Debug     bool     `arg:"-d,env,help:turn debug mode on"`
+	Recursors []string `arg:"-r,--recursor,help:list of recursors to honor"`
+	Domains   []string `arg:"positional,help:list of domains"`
+}
+
 var (
-	args = &SdnsConfig{Port: 53}
+	args = &config{
+		Port:    1053,
+		Address: ":",
+		Debug:   true,
+		Recursors: []string{
+			"8.8.8.8",
+			"8.8.4.4",
+		},
+	}
+	s   Sdns
+	err error
 )
-
-var records = map[string]string{
-	"test.service.": "192.168.0.2",
-}
-
-func parseQuery(m *dns.Msg) {
-	for _, q := range m.Question {
-		switch q.Qtype {
-		case dns.TypeA:
-			log.Printf("Query for %s\n", q.Name)
-			ip := records[q.Name]
-			if ip != "" {
-				rr, err := dns.NewRR(fmt.Sprintf("%s A %s", q.Name, ip))
-				if err == nil {
-					m.Answer = append(m.Answer, rr)
-				}
-			}
-		}
-	}
-}
-
-func handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
-	m := new(dns.Msg)
-	m.SetReply(r)
-	m.Compress = false
-
-	switch r.Opcode {
-	case dns.OpcodeQuery:
-		parseQuery(m)
-	}
-
-	w.WriteMsg(m)
-}
 
 func main() {
 	arg.Parse(args)
 
+	s, err = NewSdns(*args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"ERROR: Couldn't instantiate sdns - %s",
+			errors.Cause(err))
+		os.Exit(1)
+	}
+
 	// attach request handler func
-	dns.HandleFunc("service.", handleDnsRequest)
+	dns.HandleFunc(".", handleDnsRequest)
 
 	// start server
 	port := 1053
 	server := &dns.Server{Addr: ":" + strconv.Itoa(port), Net: "udp"}
-	log.Printf("Starting at %d\n", port)
+	fmt.Printf("Starting at %d\n", port)
 	err := server.ListenAndServe()
 	defer server.Shutdown()
 	if err != nil {
-		log.Fatalf("Failed to start server: %s\n ", err.Error())
+		fmt.Printf("Failed to start server: %s\n ", err.Error())
 	}
 }
