@@ -104,6 +104,8 @@ func (s *Sdns) Load(cfg SdnsConfig) (err error) {
 		s.logger.Debug().
 			Str("domain", domain.Name).
 			Str("lookupDomain", lookupDomain).
+			Strs("addresses", domain.Addresses).
+			Strs("nameservers", domain.Nameservers).
 			Msg("loaded")
 	}
 
@@ -121,8 +123,11 @@ func (s *Sdns) answerQuery(ctx *SdnsContext, m *dns.Msg) {
 	for _, q := range m.Question {
 		switch q.Qtype {
 		case dns.TypeA:
-			domain, found = s.ResolveA(q.Name)
+			domain, found = s.ResolveA(strings.TrimRight(q.Name, "."))
 			if !found {
+				ctx.logger.Info().
+					Str("domain", q.Name).
+					Msg("not found")
 				continue
 			}
 
