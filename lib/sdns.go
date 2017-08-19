@@ -135,8 +135,21 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 	w.WriteMsg(&m)
 }
 
-func (s *Sdns) Listen() {
+func (s *Sdns) Listen() (err error) {
 	dns.HandleFunc(".", s.handle)
+
+	server := &dns.Server{Addr: s.address, Net: "udp"}
+
+	err = server.ListenAndServe()
+	defer server.Shutdown()
+	if err != nil {
+		err = errors.Wrapf(err,
+			"errored listening on address %s",
+			s.address)
+		return
+	}
+
+	return
 }
 
 // Domain wraps the necessary information about a domain.

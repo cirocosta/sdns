@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/alexflint/go-arg"
 	"github.com/pkg/errors"
 
 	. "github.com/cirocosta/sdns/lib"
+	util "github.com/cirocosta/sdns/util"
 )
 
 type config struct {
@@ -29,14 +29,53 @@ var (
 			"8.8.4.4",
 		},
 	}
-	s   Sdns
-	err error
+	sdnsConfig = SdnsConfig{}
+	s          Sdns
+	err        error
 )
 
 func main() {
 	arg.Parse(args)
 
-	s, err = NewSdns(*args)
+	if len(args.Domains) > 0 {
+		sdnsConfig.Domains = make(map[string]*Domain, len(args.Domains))
+		for _, domainString := range args.Domains {
+			domain := &Domain{}
+			mapping, err := util.CsvStringToMap(domainString)
+			if err != nil {
+				fmt.Fprintf(os.Stderr,
+					"ERROR: Malformed domain configuration - %s",
+					errors.Cause(err))
+				os.Exit(1)
+			}
+
+			name, present := mapping["domain"]
+			if !present {
+				fmt.Fprintf(os.Stderr,
+					"ERROR: Malformed domain configuration. "+
+						"A domain name must be present")
+				os.Exit(1)
+			}
+
+			if present {
+				domain.Name = name[0]
+			}
+
+			ips, present := mapping["ip"]
+			if present {
+				domain.Addresses = ips
+			}
+
+			nameservers, present := mapping["ns"]
+			if present {
+				domain.Nameservers = nameservers
+			}
+
+			sdnsConfig.Domains[name[0]] = domain
+		}
+	}
+
+	s, err = NewSdns(sdnsConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr,
 			"ERROR: Couldn't instantiate sdns - %s",
@@ -44,16 +83,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// attach request handler func
-	dns.HandleFunc(".", handleDnsRequest)
-
-	// start server
-	port := 1053
-	server := &dns.Server{Addr: ":" + strconv.Itoa(port), Net: "udp"}
-	fmt.Printf("Starting at %d\n", port)
-	err := server.ListenAndServe()
-	defer server.Shutdown()
+	err = s.Listen()
 	if err != nil {
-		fmt.Printf("Failed to start server: %s\n ", err.Error())
+		fmt.Fprintf(os.Stderr,
+			"ERROR: Errored listening - %s",
+			errors.Cause(err))
+		os.Exit(1)
 	}
 }
