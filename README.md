@@ -30,6 +30,22 @@ sudo sdns \
         --recursor 8.8.8.8
 ```
 
+### Install
+
+Pick the latest version in the [project's releases page](https://github.com/cirocosta/sdns/releases) and then "untar" the binary to the desired location in `$PATH`.
+
+For instance:
+
+```
+URL=https://github.com/cirocosta/sdns/releases/download/v0.0.1/sdns_0.0.1_darwin_amd64.tar.gz
+mkdir -p /tmp/sdns
+curl -o /tmp/sdns/sdns.tar.gz -L $URL
+tar xzfv /tmp/sdns/sdns.tar.gz -C /tmp/sdns
+sudo mv /tmp/sdns/sdns /usr/local/bin/sdns
+```
+
+Note.: you can also use `go` to install it: `go get -u github.com/cirocosta/sdns`. Just make sure that you can run the binary with the necessary privileges to bind to port `53`.
+
 ### Usage
 
 ```
