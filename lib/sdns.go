@@ -39,6 +39,7 @@ type Sdns struct {
 	address         string
 	recursors       []string
 	logger          zerolog.Logger
+	client          *dns.Client
 }
 
 // NewSdns instantiates a Sdns given a configuration.
@@ -61,10 +62,16 @@ func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
 		return
 	}
 
+	s.client = &dns.Client{
+		SingleInflight: true,
+	}
+	s.recursors = cfg.Recursors
 	s.address = fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
 	return
 }
 
+// TODO remove the use of 'reverse' in favor
+// of an inverted radix lookup
 func Reverse(s string) string {
 	n := len(s)
 	runes := make([]rune, n)
@@ -112,44 +119,77 @@ func (s *Sdns) Load(cfg SdnsConfig) (err error) {
 	return
 }
 
-func (s *Sdns) answerQuery(ctx *SdnsContext, m *dns.Msg) {
+func (s *Sdns) recurse(ctx *SdnsContext, m *dns.Msg, server string) (in *dns.Msg, err error) {
+	var rtt time.Duration
+
+	ctx.logger.Info().
+		Str("server", server).
+		Msg("recursion started")
+
+	var rm = &dns.Msg{}
+	rm.Question = m.Question
+	rm.RecursionDesired = true
+
+	in, rtt, err = s.client.Exchange(rm, server)
+	if err != nil {
+		err = errors.Wrapf(err, "errored recursing msg %+v", *rm)
+		return
+	}
+
+	ctx.logger.Info().
+		Str("server", server).
+		Dur("duration", rtt).
+		Msg("recursion finished")
+	return
+}
+
+var (
+	ErrARecordNotFound = errors.Errorf("no domain for A record")
+)
+
+func (s *Sdns) answerQuery(ctx *SdnsContext, m *dns.Msg) (err error) {
 	var (
 		rr     dns.RR
 		domain *Domain
 		found  bool
-		err    error
+		q      dns.Question
 	)
 
-	for _, q := range m.Question {
-		switch q.Qtype {
-		case dns.TypeA:
-			domain, found = s.ResolveA(strings.TrimRight(q.Name, "."))
-			if !found {
-				ctx.logger.Info().
-					Str("domain", q.Name).
-					Msg("not found")
-				continue
-			}
-
-			rr, err = dns.NewRR(fmt.Sprintf(
-				"%s A %s", q.Name, domain.GetAddress()))
-			if err != nil {
-				ctx.logger.Error().
-					Err(err).
-					Msg("couldn't create RR")
-				continue
-			}
-			m.Answer = append(m.Answer, rr)
-		default:
-			ctx.logger.Info().
-				Uint16("query-type", q.Qtype).
-				Msg("unsuported query type")
-		}
+	if len(m.Question) == 0 {
+		err = errors.Errorf("no questions provided")
+		return
 	}
+
+	q = m.Question[0]
+	switch q.Qtype {
+	case dns.TypeA:
+		domain, found = s.ResolveA(strings.TrimRight(q.Name, "."))
+		if !found {
+			ctx.logger.Info().
+				Str("domain", q.Name).
+				Msg("not found")
+			err = ErrARecordNotFound
+			return
+		}
+
+		rr, err = dns.NewRR(fmt.Sprintf(
+			"%s A %s", q.Name, domain.GetAddress()))
+		if err != nil {
+			err = errors.Wrapf(err, "Couldn't create RR msg")
+			return
+		}
+		m.Answer = append(m.Answer, rr)
+	default:
+		err = errors.Errorf("Unsuported query type %d", q.Qtype)
+		return
+	}
+
+	return
 }
 
 func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 	var (
+		err error
 		m   = dns.Msg{}
 		ctx = SdnsContext{
 			logger: s.logger.With().
@@ -163,7 +203,33 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 
 	switch r.Opcode {
 	case dns.OpcodeQuery:
-		s.answerQuery(&ctx, &m)
+		err = s.answerQuery(&ctx, &m)
+		s.logger.Error().Err(err).Msg("couldn't answer right away")
+
+		switch err {
+		case ErrARecordNotFound:
+			var in *dns.Msg
+
+			s.logger.Info().Strs("recursors", s.recursors).Msg("recursing")
+
+			for _, server := range s.recursors {
+				in, err = s.recurse(&ctx, &m, server)
+				if err != nil {
+					ctx.logger.Error().
+						Err(err).
+						Str("server", server).
+						Msg("errored recursing")
+					continue
+				}
+
+				m.Answer = in.Answer
+				break
+			}
+		default:
+			ctx.logger.Error().
+				Err(err).
+				Msg("couldn't answer query")
+		}
 	default:
 		ctx.logger.Info().
 			Int("opcode", r.Opcode).

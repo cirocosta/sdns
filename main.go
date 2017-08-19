@@ -26,8 +26,8 @@ var (
 		Port:  1053,
 		Debug: true,
 		Recursors: []string{
-			"8.8.8.8",
-			"8.8.4.4",
+			"8.8.8.8:53",
+			"8.8.4.4:53",
 		},
 	}
 	sdnsConfig = SdnsConfig{}
