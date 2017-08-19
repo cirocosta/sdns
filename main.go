@@ -23,8 +23,8 @@ type config struct {
 
 var (
 	args = &config{
-		Port:    1053,
-		Debug:   true,
+		Port:  1053,
+		Debug: true,
 		Recursors: []string{
 			"8.8.8.8",
 			"8.8.4.4",
