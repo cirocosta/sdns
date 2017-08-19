@@ -1,0 +1,13 @@
+sudo: false
+
+language: 'go'
+
+go:
+  - 'master'
+
+script:
+  - 'make test'
+
+notifications:
+  email: false
+
