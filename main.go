@@ -11,6 +11,8 @@ import (
 	util "github.com/cirocosta/sdns/util"
 )
 
+// config contains the structure for retrieval of
+// the SDNS configuration from the command line.
 type config struct {
 	Port      int      `arg:"-p,env,help:port to listen to"`
 	Address   string   `arg:"-a,env,help:address to bind to"`
@@ -74,6 +76,11 @@ func main() {
 			sdnsConfig.Domains[name[0]] = domain
 		}
 	}
+
+	sdnsConfig.Recursors = args.Recursors
+	sdnsConfig.Debug = args.Debug
+	sdnsConfig.Address = args.Address
+	sdnsConfig.Port = args.Port
 
 	s, err = NewSdns(sdnsConfig)
 	if err != nil {
