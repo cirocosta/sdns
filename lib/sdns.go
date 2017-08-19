@@ -4,9 +4,11 @@ package lib
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/armon/go-radix"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
@@ -18,9 +20,12 @@ type SdnsConfig struct {
 	Address   string
 	Debug     bool
 	Recursors []string
-	Domains   map[string]*Domain
+	Domains   []*Domain
 }
 
+// SdnsContext wraps a context that gets passed
+// through the methods that are responsible
+// for responding to queries.
 type SdnsContext struct {
 	logger zerolog.Logger
 }
@@ -28,11 +33,12 @@ type SdnsContext struct {
 // Sdns containers the internal representation of a
 // configured set of domains.
 type Sdns struct {
-	domains        map[string]*Domain
-	reverseDomains map[string]*Domain
-	address        string
-	recursors      []string
-	logger         zerolog.Logger
+	exactDomains    *radix.Tree
+	wildcardDomains *radix.Tree
+	reverseDomains  *radix.Tree
+	address         string
+	recursors       []string
+	logger          zerolog.Logger
 }
 
 // NewSdns instantiates a Sdns given a configuration.
@@ -64,14 +70,46 @@ func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
 	return
 }
 
+func Reverse(s string) string {
+	n := len(s)
+	runes := make([]rune, n)
+	for _, rune := range s {
+		n--
+		runes[n] = rune
+	}
+	return string(runes[n:])
+}
+
 // Load loads internal mappings using a configuration.
 // This method is fired when the constructor is called
 // but can also be used to perform hot reload.
 // Note:	the address and port that the server listens
 //		to cannot be modified. If so, it'll be ignored.
 func (s *Sdns) Load(cfg SdnsConfig) (err error) {
+	var (
+		lookupDomain string
+	)
+
+	s.exactDomains = radix.New()
+	s.wildcardDomains = radix.New()
+
 	if len(cfg.Domains) == 0 {
-		err = errors.Errorf("At list an empty domain list must be specified.")
+		return
+	}
+
+	for _, domain := range cfg.Domains {
+		lookupDomain = strings.TrimRight(Reverse(domain.Name), "*")
+
+		if lookupDomain[len(lookupDomain)-1:] == "." {
+			s.wildcardDomains.Insert(lookupDomain, domain)
+		} else {
+			s.exactDomains.Insert(lookupDomain, domain)
+		}
+
+		s.logger.Debug().
+			Str("domain", domain.Name).
+			Str("lookupDomain", lookupDomain).
+			Msg("loaded")
 	}
 
 	return
@@ -198,6 +236,41 @@ func DomainMatches(a, b string) bool {
 // For instance:
 //	-	what are the IPs of mysite.com ?
 func (s *Sdns) ResolveA(name string) (domain *Domain, found bool) {
+	var (
+		strippedDomain string
+		domainFound    interface{}
+	)
+
+	if name == "" {
+		return
+	}
+
+	name = Reverse(name)
+
+	s.logger.Info().
+		Str("key", name).
+		Msg("looking for exact match")
+
+	domainFound, found = s.exactDomains.Get(name)
+	if !found {
+		lastDomainNdx := strings.LastIndex(name, ".")
+		if lastDomainNdx < 0 {
+			return
+		}
+
+		strippedDomain = name[:lastDomainNdx+1]
+
+		s.logger.Info().
+			Str("key", strippedDomain).
+			Msg("looking for wildcard match")
+
+		domainFound, found = s.wildcardDomains.Get(strippedDomain)
+	}
+
+	if domainFound != nil {
+		domain = domainFound.(*Domain)
+	}
+
 	return
 }
 

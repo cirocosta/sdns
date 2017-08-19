@@ -40,8 +40,8 @@ func main() {
 	arg.Parse(args)
 
 	if len(args.Domains) > 0 {
-		sdnsConfig.Domains = make(map[string]*Domain, len(args.Domains))
-		for _, domainString := range args.Domains {
+		sdnsConfig.Domains = make([]*Domain, len(args.Domains))
+		for idx, domainString := range args.Domains {
 			domain := &Domain{}
 			mapping, err := util.CsvStringToMap(domainString)
 			if err != nil {
@@ -73,7 +73,7 @@ func main() {
 				domain.Nameservers = nameservers
 			}
 
-			sdnsConfig.Domains[name[0]] = domain
+			sdnsConfig.Domains[idx] = domain
 		}
 	}
 
