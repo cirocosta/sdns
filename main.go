@@ -24,7 +24,6 @@ type config struct {
 var (
 	args = &config{
 		Port:    1053,
-		Address: ":",
 		Debug:   true,
 		Recursors: []string{
 			"8.8.8.8",
@@ -37,7 +36,7 @@ var (
 )
 
 func main() {
-	arg.Parse(args)
+	arg.MustParse(args)
 
 	if len(args.Domains) > 0 {
 		sdnsConfig.Domains = make([]*Domain, len(args.Domains))

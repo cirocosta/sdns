@@ -29,3 +29,22 @@ sudo sdns \
         --addr 127.0.0.11 \
         --recursor 8.8.8.8
 ```
+
+### Usage
+
+```
+Usage: sdns [--port PORT] [--address ADDRESS] [--debug] [--recursor RECURSOR] [DOMAINS [DOMAINS ...]]
+
+Positional arguments:
+  DOMAINS                list of domains
+
+Options:
+  --port PORT, -p PORT   port to listen to [default: 1053]
+  --address ADDRESS, -a ADDRESS
+                         address to bind to
+  --debug, -d            turn debug mode on [default: true]
+  --recursor RECURSOR, -r RECURSOR
+                         list of recursors to honor [default: [8.8.8.8 8.8.4.4]]
+  --help, -h             display this help and exit
+```
+

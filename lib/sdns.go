@@ -43,11 +43,6 @@ type Sdns struct {
 
 // NewSdns instantiates a Sdns given a configuration.
 func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
-	if cfg.Address == "" {
-		err = errors.Errorf("an address must be specified")
-		return
-	}
-
 	if cfg.Port == 0 {
 		err = errors.Errorf("a port must be specified")
 		return
