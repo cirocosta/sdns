@@ -1,7 +1,7 @@
 VERSION	:=	$(shell cat ./VERSION)
 
 install:
-	go install -v
+	go install -ldflags "-X main.version=$(VERSION)" -v
 
 fmt:
 	go fmt

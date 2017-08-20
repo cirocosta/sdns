@@ -11,6 +11,8 @@ import (
 	util "github.com/cirocosta/sdns/util"
 )
 
+var version = "master"
+
 // config contains the structure for retrieval of
 // the SDNS configuration from the command line.
 type config struct {
@@ -19,6 +21,10 @@ type config struct {
 	Debug     bool     `arg:"-d,env,help:turn debug mode on"`
 	Recursors []string `arg:"-r,--recursor,help:list of recursors to honor"`
 	Domains   []string `arg:"positional,help:list of domains"`
+}
+
+func (c *config) Version() string {
+	return fmt.Sprintf("\nsdns - %s\n", version)
 }
 
 var (
