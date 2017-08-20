@@ -46,6 +46,20 @@ sudo mv /tmp/sdns/sdns /usr/local/bin/sdns
 
 Note.: you can also use `go` to install it: `go get -u github.com/cirocosta/sdns`. Just make sure that you can run the binary with the necessary privileges to bind to port `53`.
 
+### Docker
+
+Using `sdns` in a Docker container is completely fine, you can find the image under [cirocosta/sdns](https://hub.docker.com/r/cirocosta/sdns).
+
+```
+docker run -d \
+        --network host \        # use the host network stack (not required)
+        cirocosta/sdns \        # use the image
+        --debug \               # logs the requests to 'stderr'
+        --port 53 \             
+        --addr 127.0.0.11 \
+        --recursor 8.8.8.8
+```
+
 ### Usage
 
 ```
