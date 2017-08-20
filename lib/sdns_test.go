@@ -40,7 +40,7 @@ func TestDomainMatches(t *testing.T) {
 	}
 }
 
-func TestResolveA_emptyDomain(t *testing.T) {
+func TestFindDomainFromName_emptyDomain(t *testing.T) {
 	s, err := NewSdns(SdnsConfig{
 		Port:    1232,
 		Address: ":",
@@ -77,14 +77,14 @@ func TestResolveA_emptyDomain(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			domain, found = s.ResolveA(tc.input)
+			domain, found = s.FindDomainFromName(tc.input)
 			assert.Equal(t, tc.found, found)
 			assert.Equal(t, tc.domain, domain)
 		})
 	}
 }
 
-func TestResolveA_exactDomain(t *testing.T) {
+func TestFindDomainFromName_exactDomain(t *testing.T) {
 	var d1 = &Domain{
 		Name:        "test.something.com",
 		Addresses:   []string{"192.168.0.103"},
@@ -157,14 +157,14 @@ func TestResolveA_exactDomain(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			domain, found = s.ResolveA(tc.input)
+			domain, found = s.FindDomainFromName(tc.input)
 			assert.Equal(t, tc.found, found)
 			assert.Equal(t, tc.domain, domain)
 		})
 	}
 }
 
-func TestResolveA_wildcardDomain(t *testing.T) {
+func TestFindDomainFromName_wildcardDomain(t *testing.T) {
 	var d1 = &Domain{
 		Name:        "*.something.com",
 		Addresses:   []string{"192.168.0.103"},
@@ -233,7 +233,7 @@ func TestResolveA_wildcardDomain(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			domain, found = s.ResolveA(tc.input)
+			domain, found = s.FindDomainFromName(tc.input)
 			assert.Equal(t, tc.found, found)
 			assert.Equal(t, tc.domain, domain)
 		})

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-radix"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
@@ -34,9 +33,9 @@ type SdnsContext struct {
 // Sdns containers the internal representation of a
 // configured set of domains.
 type Sdns struct {
-	exactDomains    *radix.Tree
-	wildcardDomains *radix.Tree
-	reverseDomains  *radix.Tree
+	exactDomains    map[string]*Domain
+	wildcardDomains map[string]*Domain
+	reverseDomains  map[string]*Domain
 	address         string
 	recursors       []string
 	logger          zerolog.Logger
@@ -72,47 +71,33 @@ func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
 	return
 }
 
-// TODO remove the use of 'reverse' in favor
-// of an inverted radix lookup
-func Reverse(s string) string {
-	n := len(s)
-	runes := make([]rune, n)
-	for _, rune := range s {
-		n--
-		runes[n] = rune
-	}
-	return string(runes[n:])
-}
-
 // Load loads internal mappings using a configuration.
 // This method is fired when the constructor is called
 // but can also be used to perform hot reload.
 // Note:	the address and port that the server listens
 //		to cannot be modified. If so, it'll be ignored.
 func (s *Sdns) Load(cfg SdnsConfig) (err error) {
-	var (
-		lookupDomain string
-	)
-
-	s.exactDomains = radix.New()
-	s.wildcardDomains = radix.New()
+	s.exactDomains = make(map[string]*Domain)
+	s.wildcardDomains = make(map[string]*Domain)
 
 	if len(cfg.Domains) == 0 {
 		return
 	}
 
 	for _, domain := range cfg.Domains {
-		lookupDomain = strings.TrimRight(Reverse(domain.Name), "*")
-
-		if lookupDomain[len(lookupDomain)-1:] == "." {
-			s.wildcardDomains.Insert(lookupDomain, domain)
+		if domain.Name[0] == '*' {
+			if domain.Name[1] != '.' {
+				err = errors.Errorf("malformed domain name. " +
+					"'*' must be followed by '.'")
+				return
+			}
+			s.wildcardDomains[domain.Name[1:]] = domain
 		} else {
-			s.exactDomains.Insert(lookupDomain, domain)
+			s.exactDomains[domain.Name] = domain
 		}
 
 		s.logger.Debug().
 			Str("domain", domain.Name).
-			Str("lookupDomain", lookupDomain).
 			Strs("addresses", domain.Addresses).
 			Strs("nameservers", domain.Nameservers).
 			Msg("loaded")
@@ -161,7 +146,7 @@ func (s *Sdns) answerNS(ctx *SdnsContext, m *dns.Msg) (err error) {
 		rr   dns.RR
 	)
 
-	domain, found := s.ResolveA(strings.TrimRight(name, "."))
+	domain, found := s.FindDomainFromName(strings.TrimRight(name, "."))
 	if !found {
 		err = ErrDomainNotFound
 		return
@@ -184,7 +169,7 @@ func (s *Sdns) answerA(ctx *SdnsContext, m *dns.Msg) (err error) {
 		rr   dns.RR
 	)
 
-	domain, found := s.ResolveA(strings.TrimRight(name, "."))
+	domain, found := s.FindDomainFromName(strings.TrimRight(name, "."))
 	if !found {
 		err = ErrDomainNotFound
 		return
@@ -335,11 +320,11 @@ func DomainMatches(a, b string) bool {
 	return a == b
 }
 
-// ResolveA performs the job of resolving the
+// FindDomainFromName performs the job of resolving the
 // IP address of a given service from a name.
 // For instance:
 //	-	what are the IPs of mysite.com ?
-func (s *Sdns) ResolveA(name string) (domain *Domain, found bool) {
+func (s *Sdns) FindDomainFromName(name string) (domain *Domain, found bool) {
 	var (
 		strippedDomain string
 		domainFound    interface{}
@@ -349,26 +334,24 @@ func (s *Sdns) ResolveA(name string) (domain *Domain, found bool) {
 		return
 	}
 
-	name = Reverse(name)
-
 	s.logger.Info().
 		Str("key", name).
 		Msg("looking for exact match")
 
-	domainFound, found = s.exactDomains.Get(name)
+	domainFound, found = s.exactDomains[name]
 	if !found {
-		lastDomainNdx := strings.LastIndex(name, ".")
+		lastDomainNdx := strings.IndexByte(name, '.')
 		if lastDomainNdx < 0 {
 			return
 		}
 
-		strippedDomain = name[:lastDomainNdx+1]
+		strippedDomain = name[lastDomainNdx:]
 
 		s.logger.Info().
 			Str("key", strippedDomain).
 			Msg("looking for wildcard match")
 
-		domainFound, found = s.wildcardDomains.Get(strippedDomain)
+		domainFound, found = s.wildcardDomains[strippedDomain]
 	}
 
 	if domainFound != nil {
@@ -376,13 +359,4 @@ func (s *Sdns) ResolveA(name string) (domain *Domain, found bool) {
 	}
 
 	return
-}
-
-// ResolveNS lists the nameservers responsible
-// for a given domain.
-// For instance:
-//	-	who are the nameservers responsible
-//		for the domains of mysite.com?
-func (s *Sdns) ResolveNS(domain string) {
-
 }
