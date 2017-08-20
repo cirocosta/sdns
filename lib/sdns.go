@@ -61,9 +61,7 @@ func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
 		return
 	}
 
-	s.client = &dns.Client{
-		SingleInflight: true,
-	}
+	s.client = &dns.Client{SingleInflight: true}
 	s.recursors = cfg.Recursors
 	s.address = fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
 
@@ -145,6 +143,11 @@ func (s *Sdns) answerNS(ctx *SdnsContext, m *dns.Msg) (err error) {
 		rr   dns.RR
 	)
 
+	s.logger.Info().
+		Str("name", name).
+		Str("query", "NS").
+		Msg("looking for domain")
+
 	domain, found := s.FindDomainFromName(strings.TrimRight(name, "."))
 	if !found {
 		err = ErrDomainNotFound
@@ -167,6 +170,11 @@ func (s *Sdns) answerA(ctx *SdnsContext, m *dns.Msg) (err error) {
 		name string = m.Question[0].Name
 		rr   dns.RR
 	)
+
+	s.logger.Info().
+		Str("name", name).
+		Str("query", "A").
+		Msg("looking for domain")
 
 	domain, found := s.FindDomainFromName(strings.TrimRight(name, "."))
 	if !found {
@@ -221,12 +229,14 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 	case dns.OpcodeQuery:
 		err = s.answerQuery(&ctx, &m)
 		if err != nil {
-			s.logger.Error().
+			s.logger.Warn().
 				Err(err).
 				Msg("couldn't answer right away")
 		}
 
 		switch err {
+		case ErrUnsupportedQueryType:
+			fallthrough
 		case ErrDomainNotFound:
 			var in *dns.Msg
 
@@ -333,10 +343,6 @@ func (s *Sdns) FindDomainFromName(name string) (domain *Domain, found bool) {
 		return
 	}
 
-	s.logger.Info().
-		Str("key", name).
-		Msg("looking for exact match")
-
 	domainFound, found = s.exactDomains[name]
 	if !found {
 		lastDomainNdx := strings.IndexByte(name, '.')
@@ -345,11 +351,6 @@ func (s *Sdns) FindDomainFromName(name string) (domain *Domain, found bool) {
 		}
 
 		strippedDomain = name[lastDomainNdx:]
-
-		s.logger.Info().
-			Str("key", strippedDomain).
-			Msg("looking for wildcard match")
-
 		domainFound, found = s.wildcardDomains[strippedDomain]
 	}
 
