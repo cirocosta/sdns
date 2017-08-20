@@ -10,7 +10,6 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
-	"github.com/rs/xid"
 	"github.com/rs/zerolog"
 )
 
@@ -210,7 +209,7 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 		m   = dns.Msg{}
 		ctx = SdnsContext{
 			logger: s.logger.With().
-				Str("id", xid.New().String()).
+				Uint16("id", r.Id).
 				Logger(),
 		}
 	)

@@ -1,9 +1,11 @@
-package lib
+package lib_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	. "github.com/cirocosta/sdns/lib"
 )
 
 func TestDomainMatches(t *testing.T) {
