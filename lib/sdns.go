@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// SdnsConfig configures SDNS.
 type SdnsConfig struct {
 	Port      int
 	Address   string
@@ -67,6 +68,7 @@ func NewSdns(cfg SdnsConfig) (s Sdns, err error) {
 	}
 	s.recursors = cfg.Recursors
 	s.address = fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
+
 	return
 }
 
@@ -120,19 +122,22 @@ func (s *Sdns) Load(cfg SdnsConfig) (err error) {
 }
 
 func (s *Sdns) recurse(ctx *SdnsContext, m *dns.Msg, server string) (in *dns.Msg, err error) {
-	var rtt time.Duration
+	var (
+		rtt time.Duration
+		rm  = &dns.Msg{Question: m.Question}
+	)
+
+	rm.RecursionDesired = true
 
 	ctx.logger.Info().
 		Str("server", server).
-		Msg("recursion started")
-
-	var rm = &dns.Msg{}
-	rm.Question = m.Question
-	rm.RecursionDesired = true
+		Msg("recursing question")
 
 	in, rtt, err = s.client.Exchange(rm, server)
 	if err != nil {
-		err = errors.Wrapf(err, "errored recursing msg %+v", *rm)
+		err = errors.Wrapf(err,
+			"errored forwarding msg %+v",
+			*rm)
 		return
 	}
 
@@ -140,47 +145,74 @@ func (s *Sdns) recurse(ctx *SdnsContext, m *dns.Msg, server string) (in *dns.Msg
 		Str("server", server).
 		Dur("duration", rtt).
 		Msg("recursion finished")
+
 	return
 }
 
 var (
-	ErrARecordNotFound = errors.Errorf("no domain for A record")
+	ErrDomainNotFound       = errors.Errorf("Domain not found")
+	ErrNoQuestions          = errors.Errorf("No questions provided")
+	ErrUnsupportedQueryType = errors.Errorf("Query type not support")
 )
 
-func (s *Sdns) answerQuery(ctx *SdnsContext, m *dns.Msg) (err error) {
+func (s *Sdns) answerNS(ctx *SdnsContext, m *dns.Msg) (err error) {
 	var (
-		rr     dns.RR
-		domain *Domain
-		found  bool
-		q      dns.Question
+		name string = m.Question[0].Name
+		rr   dns.RR
 	)
 
-	if len(m.Question) == 0 {
-		err = errors.Errorf("no questions provided")
+	domain, found := s.ResolveA(strings.TrimRight(name, "."))
+	if !found {
+		err = ErrDomainNotFound
 		return
 	}
 
-	q = m.Question[0]
-	switch q.Qtype {
-	case dns.TypeA:
-		domain, found = s.ResolveA(strings.TrimRight(q.Name, "."))
-		if !found {
-			ctx.logger.Info().
-				Str("domain", q.Name).
-				Msg("not found")
-			err = ErrARecordNotFound
-			return
-		}
-
-		rr, err = dns.NewRR(fmt.Sprintf(
-			"%s A %s", q.Name, domain.GetAddress()))
+	for _, ns := range domain.Nameservers {
+		rr, err = dns.NewRR(fmt.Sprintf("%s NS %s", name, ns))
 		if err != nil {
 			err = errors.Wrapf(err, "Couldn't create RR msg")
 			return
 		}
 		m.Answer = append(m.Answer, rr)
+	}
+	return
+}
+
+func (s *Sdns) answerA(ctx *SdnsContext, m *dns.Msg) (err error) {
+	var (
+		name string = m.Question[0].Name
+		rr   dns.RR
+	)
+
+	domain, found := s.ResolveA(strings.TrimRight(name, "."))
+	if !found {
+		err = ErrDomainNotFound
+		return
+	}
+
+	rr, err = dns.NewRR(fmt.Sprintf(
+		"%s A %s", name, domain.GetAddress()))
+	if err != nil {
+		err = errors.Wrapf(err, "Couldn't create RR msg")
+		return
+	}
+	m.Answer = append(m.Answer, rr)
+	return
+}
+
+func (s *Sdns) answerQuery(ctx *SdnsContext, m *dns.Msg) (err error) {
+	if len(m.Question) == 0 {
+		err = ErrNoQuestions
+		return
+	}
+
+	switch m.Question[0].Qtype {
+	case dns.TypeA:
+		err = s.answerA(ctx, m)
+	case dns.TypeNS:
+		err = s.answerNS(ctx, m)
 	default:
-		err = errors.Errorf("Unsuported query type %d", q.Qtype)
+		err = ErrUnsupportedQueryType
 		return
 	}
 
@@ -204,13 +236,19 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 	switch r.Opcode {
 	case dns.OpcodeQuery:
 		err = s.answerQuery(&ctx, &m)
-		s.logger.Error().Err(err).Msg("couldn't answer right away")
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Msg("couldn't answer right away")
+		}
 
 		switch err {
-		case ErrARecordNotFound:
+		case ErrDomainNotFound:
 			var in *dns.Msg
 
-			s.logger.Info().Strs("recursors", s.recursors).Msg("recursing")
+			s.logger.Info().
+				Strs("recursors", s.recursors).
+				Msg("starting to recurse")
 
 			for _, server := range s.recursors {
 				in, err = s.recurse(&ctx, &m, server)
