@@ -257,6 +257,7 @@ func (s *Sdns) handle(w dns.ResponseWriter, r *dns.Msg) {
 				m.Answer = in.Answer
 				break
 			}
+		case nil:
 		default:
 			ctx.logger.Error().
 				Err(err).
